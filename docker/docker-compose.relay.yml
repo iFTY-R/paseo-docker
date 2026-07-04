@@ -1,0 +1,19 @@
+version: '3'
+
+networks:
+  1panel-network:
+    external: true
+
+services:
+  paseo-relay:
+    image: ghcr.io/zenghongtu/paseo-relay:latest
+    container_name: paseo-relay
+    hostname: paseo-relay
+    restart: unless-stopped
+    ports:
+      - "${RELAY_PORT:-8411}:8411"
+    environment:
+      RELAY_ADDR: ":8411"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+    networks:
+      - 1panel-network
