@@ -1,0 +1,128 @@
+#!/bin/sh
+set -eu
+
+BASE_ENTRYPOINT="/usr/local/bin/paseo-docker-entrypoint.base"
+STATE_DIR="${AGENT_CLI_UPDATE_STATE_DIR:-/var/lib/paseo-agent-cli-update}"
+LAST_RUN_FILE="${STATE_DIR}/last-run"
+LOCK_DIR="${STATE_DIR}/update.lock"
+UPDATE_INTERVAL_HOURS="${AGENT_CLI_UPDATE_INTERVAL_HOURS:-72}"
+CHECK_INTERVAL_SECONDS="${AGENT_CLI_UPDATE_CHECK_INTERVAL_SECONDS:-3600}"
+IDLE_PROCESS_NAMES="${AGENT_CLI_IDLE_PROCESS_NAMES:-codex claude opencode}"
+
+is_auto_update_enabled() {
+  case "${AUTO_UPDATE_AGENT_CLIS:-true}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_positive_integer() {
+  printf '%s' "$1" | grep -Eq '^[1-9][0-9]*$'
+}
+
+is_background_update_enabled() {
+  case "${AUTO_UPDATE_AGENT_CLIS_BACKGROUND:-true}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+normalize_intervals() {
+  if ! is_positive_integer "$UPDATE_INTERVAL_HOURS"; then
+    echo "warning: invalid AGENT_CLI_UPDATE_INTERVAL_HOURS=${UPDATE_INTERVAL_HOURS}; using 72" >&2
+    UPDATE_INTERVAL_HOURS=72
+  fi
+
+  if ! is_positive_integer "$CHECK_INTERVAL_SECONDS"; then
+    echo "warning: invalid AGENT_CLI_UPDATE_CHECK_INTERVAL_SECONDS=${CHECK_INTERVAL_SECONDS}; using 3600" >&2
+    CHECK_INTERVAL_SECONDS=3600
+  fi
+}
+
+should_update_agent_clis() {
+  is_auto_update_enabled || return 1
+  normalize_intervals
+
+  now="$(date +%s)"
+  interval_seconds="$((UPDATE_INTERVAL_HOURS * 3600))"
+
+  if [ ! -f "$LAST_RUN_FILE" ]; then
+    return 0
+  fi
+
+  last_run="$(cat "$LAST_RUN_FILE" 2>/dev/null || true)"
+  if ! is_positive_integer "$last_run"; then
+    return 0
+  fi
+
+  [ "$((now - last_run))" -ge "$interval_seconds" ]
+}
+
+is_agent_cli_idle() {
+  if ! command -v ps >/dev/null 2>&1; then
+    return 0
+  fi
+
+  processes="$(ps -eo comm=,args= 2>/dev/null || ps 2>/dev/null || true)"
+  [ -n "$processes" ] || return 0
+
+  for process_name in $IDLE_PROCESS_NAMES; do
+    if printf '%s\n' "$processes" | grep -E "(^|[[:space:]/])${process_name}([[:space:]]|$)" | grep -v grep >/dev/null 2>&1; then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+update_agent_clis() {
+  mkdir -p "$STATE_DIR"
+
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    echo "Agent CLI update already running; skipping."
+    return 0
+  fi
+
+  echo "Checking agent CLI updates..."
+  set +e
+  if npm install -g \
+      "@openai/codex@${AGENT_CLI_CODEX_VERSION:-latest}" \
+      "@anthropic-ai/claude-code@${AGENT_CLI_CLAUDE_CODE_VERSION:-latest}" \
+      "opencode-ai@${AGENT_CLI_OPENCODE_VERSION:-latest}"; then
+    npm cache clean --force >/dev/null 2>&1 || true
+    echo "Agent CLI update completed."
+  else
+    echo "warning: agent CLI update failed; continuing with installed versions" >&2
+  fi
+
+  date +%s > "$LAST_RUN_FILE"
+  rmdir "$LOCK_DIR" 2>/dev/null || true
+  set -e
+}
+
+start_background_agent_cli_updater() {
+  is_background_update_enabled || return 0
+  normalize_intervals
+
+  (
+    while :; do
+      sleep "$CHECK_INTERVAL_SECONDS"
+
+      if should_update_agent_clis; then
+        if is_agent_cli_idle; then
+          update_agent_clis
+        else
+          echo "Agent CLI update due, but agent processes are active; retrying later."
+        fi
+      fi
+    done
+  ) &
+}
+
+if [ "$#" -eq 0 ] && should_update_agent_clis; then
+  update_agent_clis
+fi
+
+start_background_agent_cli_updater
+
+exec "$BASE_ENTRYPOINT" "$@"

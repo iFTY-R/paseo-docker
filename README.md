@@ -57,6 +57,25 @@ image: ghcr.io/<owner>/<repo>:latest
 
 其余 Compose 配置可以保持不变。
 
+## Agent CLI 自动升级
+
+容器默认会在启动 Paseo 时检查 agent CLI 更新，默认间隔为 72 小时，也就是 3 天。
+
+容器启动后还会运行一个后台检查任务，默认每小时检查一次。如果距离上次升级已经超过 72 小时，并且当前没有检测到 `codex`、`claude`、`opencode` 相关进程，才会执行升级。
+
+可用环境变量：
+
+- `AUTO_UPDATE_AGENT_CLIS`：是否启用自动升级，默认 `true`。
+- `AUTO_UPDATE_AGENT_CLIS_BACKGROUND`：是否启用后台自动检查，默认 `true`。
+- `AGENT_CLI_UPDATE_INTERVAL_HOURS`：升级检查间隔，默认 `72`。
+- `AGENT_CLI_UPDATE_CHECK_INTERVAL_SECONDS`：后台检查频率，默认 `3600`。
+- `AGENT_CLI_IDLE_PROCESS_NAMES`：判断空闲时检查的进程名，默认 `codex claude opencode`。
+- `AGENT_CLI_CODEX_VERSION`：运行时安装的 Codex 版本，默认 `latest`。
+- `AGENT_CLI_CLAUDE_CODE_VERSION`：运行时安装的 Claude Code 版本，默认 `latest`。
+- `AGENT_CLI_OPENCODE_VERSION`：运行时安装的 OpenCode 版本，默认 `latest`。
+
+升级失败不会阻止 Paseo 启动，容器会继续使用镜像内已经安装的版本。
+
 如果需要把默认 `relay.paseo.sh` 换成自托管 relay，参考：
 
 - [Paseo Relay 自部署说明](docs/paseo/relay-self-hosting.md)
