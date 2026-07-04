@@ -57,6 +57,8 @@ image: ghcr.io/<owner>/<repo>:latest
 
 其余 Compose 配置可以保持不变。
 
+注意：仓库里的 Compose 不固定 `container_name`，避免和已有的 `paseo` 容器重名。如果你的服务器上还在运行旧官方容器，需要先停止/删除旧容器，或者给新编排配置不同的 `HTTP_PORT`，否则可能出现容器名或 `6767` 端口冲突。
+
 ## Agent CLI 自动升级
 
 容器默认会在启动 Paseo 时检查 agent CLI 更新，默认间隔为 72 小时，也就是 3 天。
