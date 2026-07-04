@@ -57,6 +57,10 @@ image: ghcr.io/<owner>/<repo>:latest
 
 其余 Compose 配置可以保持不变。
 
+如果需要把默认 `relay.paseo.sh` 换成自托管 relay，参考：
+
+- [Paseo Relay 自部署说明](docs/paseo/relay-self-hosting.md)
+
 ## 本地构建测试
 
 本地构建：
